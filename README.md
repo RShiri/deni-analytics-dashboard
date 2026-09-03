@@ -1,36 +1,65 @@
-# Automated Data Update System Documentation
+# Israeli NBA Players: 360° Performance Analytics
 
-## Overview
-The automated data update system ensures that the analytics dashboard is continually updated with the latest data. This section provides comprehensive details on the system's functioning and operational management.
+A Streamlit dashboard tracking every active Israeli NBA player: **Deni Avdija** (Portland
+Trail Blazers, 2026 All-Star), **Ben Saraf** and **Danny Wolf** (Brooklyn Nets), and
+**Emanuel Sharp** (Sacramento Kings).
 
-## Schedule-Aware Updates
-The system is designed to execute updates based on a predefined schedule. Updates are triggered at specific intervals to ensure that users have access to the most recent analytics data. The schedule settings can be modified within the GitHub Actions configurations.
+**Live dashboard:** https://nba-dashboard-ramshiri.streamlit.app/
 
-## Daily Execution via GitHub Actions
-The data update process is orchestrated using GitHub Actions, which allows tasks to run at scheduled times without manual intervention. The workflow file responsible for the daily execution is located in the `.github/workflows` directory. Additional details on configuring and modifying the CI/CD pipeline can be found in the workflow file annotations.
+## Features
+- **Player switcher** — every page re-renders for whichever of the four players is selected.
+- **Smart Data Patching** — the current season's career row is refreshed from game logs if stale.
+- **Hexbin & 14-Zone Shot Maps** — density and FG% efficiency visualizations with fixed court geometry.
+- **Career Analysis** — per-game and per-36 trends, usage rate, true shooting %.
+- **Deep Dive** — percentile ranking and case-study charts against the current NBA All-Star roster,
+  plus a live league free-throw leaderboard.
+- Visual design ported from the [XLALIGA](https://github.com/RShiri/XLALIGA) "Broadcast Kinetic"
+  skin: carbon ground, one signal colour (lime), condensed/uppercase display type.
 
-### How to View GitHub Actions
-1. Navigate to the **Actions** tab in the repository.
-2. Select the relevant workflow to view the execution history and logs.
+## Project layout
+```
+app.py              Streamlit app (all pages, all players)
+theme.py            Shared CSS + Plotly theme (Broadcast Kinetic skin)
+fetch_data.py        Data fetcher — pulls career stats, game logs, shot charts (nba_api)
+nba_data.pkl          Cached data consumed by app.py (generated, committed so the deployed
+                      app has data without needing network access at runtime)
+.github/workflows/    Daily automated data refresh
+```
 
-## Other Players Stats Update Logic
-The logic used to update other player statistics is integrated into the data update pipeline. Each player’s stats are fetched from external APIs and processed during the update cycle. Make sure to check if the data source APIs are operational to ensure data quality.
+## Running locally
+```bash
+pip install -r requirements.txt
+python fetch_data.py          # refresh nba_data.pkl from the NBA Stats API
+streamlit run app.py
+```
 
-## Manual Update Commands
-In cases where immediate updates are necessary, there are manual commands that can be executed to trigger updates. These commands run in a CLI environment conducive to interacting with the GitHub repository. Examples of such commands are provided within our documentation.
+To iterate on a single player without waiting on a full fetch:
+```bash
+python fetch_data.py --player ben_saraf
+```
 
-## Required Permissions Setup
-To ensure the automated system functions correctly, proper permissions must be assigned to the GitHub Actions. This includes:
-- Access to the required repositories.
-- Minimal required permissions to perform read and write operations within the repository.
+## Automated Data Updates
+`.github/workflows/update_data.yml` runs `fetch_data.py` daily (09:00 UTC) via GitHub Actions
+and commits `nba_data.pkl` back to the repo if it changed. It can also be triggered manually
+from the **Actions** tab (`workflow_dispatch`), optionally scoped to a single player.
 
-## Troubleshooting Guide
-When encountering issues with the automated data updates, refer to the following steps:
-1. Check the GitHub Actions logs for errors that may provide insight into failed executions.
-2. Ensure all necessary permissions are correctly set up.
-3. Review external API status for potential outages.
-4. Check if the schedule settings haven’t been altered inadvertently.
+### How the scraper works
+`fetch_data.py` calls the real NBA Stats API through the [`nba_api`](https://github.com/swar/nba_api)
+package — no manual JSON files, no stubs:
+- **Career stats**: `playercareerstats` (per-game) + `playerdashboardbyyearoveryear` (advanced,
+  for USG%/TS%/NET_RATING).
+- **Game logs**: `playergamelog`, per season, for up to the last 4 seasons since each player's draft year.
+- **Shot charts**: `shotchartdetail`, same season range.
+- **All-Star comparison cohort**: `leaguedashplayerstats` filtered to the current NBA All-Star
+  roster (`ALL_STAR_ROSTER` in `fetch_data.py` — update it every February after All-Star rosters
+  are announced).
+- **League free-throw leaders**: `leaguedashplayerstats`, season totals, with an automatic
+  fallback to the prior season if the current one hasn't started yet.
 
-For further assistance, please contact the project maintainers.
-
----
+### Troubleshooting
+1. Check the workflow run logs under the **Actions** tab for the failing step's output.
+2. `nba_api` calls stats.nba.com directly — if NBA.com is rate-limiting or blocking GitHub's
+   IP ranges, re-run later or add delays (see `REQUEST_DELAY` in `fetch_data.py`).
+3. A newly-drafted player (like Emanuel Sharp before his rookie season tips off) will have
+   empty game logs / shot charts until games are actually played — the dashboard handles this
+   gracefully rather than erroring.

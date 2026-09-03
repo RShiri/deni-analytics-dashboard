@@ -1,0 +1,48 @@
+name: Update NBA Data
+
+on:
+  schedule:
+    # Daily at 09:00 UTC — well after West Coast games finish, before most people check the dashboard.
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+    inputs:
+      player:
+        description: "Only refresh one player (key from fetch_data.py PLAYERS, e.g. ben_saraf). Leave blank for everyone."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch latest NBA data
+        run: |
+          if [ -n "${{ github.event.inputs.player }}" ]; then
+            python fetch_data.py --player "${{ github.event.inputs.player }}"
+          else
+            python fetch_data.py
+          fi
+
+      - name: Commit updated data if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- nba_data.pkl; then
+            echo "No data changes."
+          else
+            git add nba_data.pkl
+            git commit -m "chore: refresh nba_data.pkl [automated]"
+            git push
+          fi
